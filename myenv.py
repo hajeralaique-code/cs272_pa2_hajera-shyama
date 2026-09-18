@@ -1,10 +1,11 @@
-"""Task 1: your own custom Gymnasium environment.
+"""A stochastic greenhouse environment.
 
-Design the world yourself. The requirements it has to meet are in the assignment
-readme.
+The agent manages a growing plant by choosing whether to water, wait, or
+harvest. The goal is to keep soil moisture in a healthy range long enough for
+the plant to reach full maturity, then harvest it for the largest reward.
 
-Delete this docstring and describe your own world instead.
-"""
+Extremely dry or wet soil stresses the plant and receives a penalty.
+Random variation in irrigation and plant growth makes the environment stochastic."""
 
 import numpy as np
 import gymnasium as gym
@@ -13,28 +14,53 @@ from gymnasium.envs.registration import register
 
 
 class MyEnv(gym.Env):
-    """TODO: one line on what this world is and what the agent is trying to do."""
+    """Manage soil moisture and grow a plant to full maturity before harvesting."""
 
     metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
     def __init__(self, render_mode: str | None = None):
-        # TODO: describe your world here -- the map, the pieces, the constants.
+        # Growth stages: 0=seed, 1-4=growing, 5=fully ripe.
+        self.num_growth_stages = 6
 
-        # TODO: set the two spaces. Both must be Discrete.
+        # Moisture levels: 0=bone dry, 1-3=healthy range, 4=waterlogged.
+        self.num_moisture_levels = 5
 
-        self.observation_space = # TODO
-        self.action_space = # TODO
+        # State is encoded as:
+        # state = growth_stage * 5 + moisture
+        # This gives 6 * 5 = 30 possible states.
+        self.observation_space = spaces.Discrete(30)
+
+        # Actions:
+        # 0 = Water
+        # 1 = Wait
+        # 2 = Harvest
+        self.action_space = spaces.Discrete(3)
+
+        # These hold the current state of the greenhouse.
+        self.growth_stage = 0
+        self.moisture = 2
 
         if render_mode is not None and render_mode not in self.metadata["render_modes"]:
             raise ValueError(f"unsupported render_mode: {render_mode}")
         self.render_mode = render_mode
+
+    # Two helper functions
+    def _get_obs(self):
+        return int(self.growth_stage * 5 + self.moisture)
+
+    def _get_info(self):
+        return {
+            "growth_stage": self.growth_stage,
+            "moisture": self.moisture,
+        }
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         # This line seeds self.np_random. Without it, seeding does not work and
         # the reproducibility test fails.
         super().reset(seed=seed)
 
-        # TODO: put the world back to its starting state.
+        self.growth_stage = 0
+        self.moisture = 2
 
         return self._get_obs(), self._get_info()
 
@@ -46,7 +72,58 @@ class MyEnv(gym.Env):
         # wrapper from register() handle running out of time. The agent treats
         # the two differently, and so should you.
 
-        raise NotImplementedError
+        if not self.action_space.contains(action):
+            raise ValueError(f"invalid action: {action}")
+
+        terminated = False
+        reward = -0.1
+
+        # Action 2: Harvest
+        if action == 2:
+            terminated = True
+
+            if self.growth_stage == 5:
+                reward = 100.0
+            elif self.growth_stage == 4:
+                reward = 10.0
+            else:
+                reward = -1.0
+
+            return self._get_obs(), reward, terminated, False, self._get_info()
+
+        # Actions 0 and 1: Water or Wait
+        transition_roll = self.np_random.random()
+
+        if action == 0:  # Water
+            if transition_roll < 0.80:
+                moisture_change = 1
+            else:
+                moisture_change = 2
+
+        elif action == 1:  # Wait
+            if transition_roll < 0.80:
+                moisture_change = -1
+            else:
+                moisture_change = 0
+
+        new_moisture = self.moisture + moisture_change
+
+        # Keep moisture inside the valid range 0-4.
+        new_moisture = max(0, min(4, new_moisture))
+        self.moisture = new_moisture
+
+        # Reward depends on the resulting moisture.
+        if self.moisture == 0 or self.moisture == 4:
+            reward = -1.0
+        else:
+            reward = -0.1
+
+        # Growth is only possible when moisture is healthy.
+        if 1 <= self.moisture <= 3 and self.growth_stage < 5:
+            if self.np_random.random() < 0.80:
+                self.growth_stage += 1
+
+        return self._get_obs(), reward, terminated, False, self._get_info()
 
     def render(self):
         """Return a readable picture of the current state, as a string."""
