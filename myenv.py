@@ -13,6 +13,28 @@ from gymnasium import spaces
 from gymnasium.envs.registration import register
 
 
+# --- Drawings used by render() ---------------------------------------------
+FULL, EMPTY = "█", "░"  # bar characters (use "#" and "." for plain ASCII)
+
+STAGE_NAMES = ["Seed", "Sprout", "Seedling", "Growing", "Budding", "Ripe"]
+MOISTURE_NAMES = [
+    "Bone dry (no growth)", "Healthy", "Healthy", "Healthy",
+    "Waterlogged (no growth)",
+]
+
+# One 4-line drawing per growth stage, every line 9 characters wide.
+PLANT_ART = [
+    ["         ", "         ", "         ", "    .    "],  # 0 seed
+    ["         ", "         ", "   \\ /   ", "    |    "],  # 1 sprout
+    ["         ", "  \\ | /  ", "   \\|/   ", "    |    "],  # 2 seedling
+    ["    |    ", "  \\ | /  ", "   \\|/   ", "    |    "],  # 3 growing
+    ["    o    ", "  \\ | /  ", "   \\|/   ", "    |    "],  # 4 budding
+    ["   (*)   ", "  \\ | /  ", "   \\|/   ", "    |    "],  # 5 ripe
+]
+POT_ART = ["[=======]", " \\_____/ "]
+# -----------------------------------------------------------------------------
+
+
 class MyEnv(gym.Env):
     """Manage soil moisture and grow a plant to full maturity before harvesting."""
 
@@ -129,8 +151,33 @@ class MyEnv(gym.Env):
         """Return a readable picture of the current state, as a string."""
         if self.render_mode != "ansi":
             return None
-        # TODO: draw it. You need this for the sample episode in your report.
-        raise NotImplementedError
+
+        max_stage = self.num_growth_stages - 1       # 5
+        max_moisture = self.num_moisture_levels - 1  # 4
+
+        # Bars: filled slots = current value, empty slots = room left.
+        growth_bar = FULL * self.growth_stage + EMPTY * (max_stage - self.growth_stage)
+        moisture_bar = FULL * self.moisture + EMPTY * (max_moisture - self.moisture)
+        moisture_bar = moisture_bar.ljust(max_stage)  # keep the columns aligned
+
+        # Left side: the plant and pot. Right side: one note per row.
+        picture = PLANT_ART[self.growth_stage] + POT_ART
+        notes = [
+            f"Growth    {growth_bar}  {self.growth_stage}/{max_stage}  "
+            f"{STAGE_NAMES[self.growth_stage]}",
+            "",
+            f"Moisture  {moisture_bar}  {self.moisture}/{max_moisture}  "
+            f"{MOISTURE_NAMES[self.moisture]}",
+            "",
+            f"State {self._get_obs()}  "
+            f"(stage {self.growth_stage}, moisture {self.moisture})",
+            "",
+        ]
+
+        rows = [f"{art}   {note}".rstrip() for art, note in zip(picture, notes)]
+        return "\n".join(["=== Greenhouse ===", *rows])
+    
+        # raise NotImplementedError
 
     def close(self):
         pass
@@ -140,7 +187,7 @@ class MyEnv(gym.Env):
 # version, and max_episode_steps must be large enough that a competent agent can
 # finish but small enough that a lost one gives up.
 register(
-    id="cs272/MyEnv-v0",
+    id="cs272/GreenHouse-v0",
     entry_point="myenv:MyEnv",
     max_episode_steps=300,
 )
