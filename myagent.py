@@ -185,11 +185,40 @@ class SarsaLambdaAgent:
                 bool: True if it reached a terminal state, False if it ran out
             ]
         """
-        raise NotImplementedError
+        episode = []
+        state, _ = self.env.reset()
+
+        for _ in range(max_steps):
+            action = self.eps_greedy(state, exploration=False)
+
+            next_state, reward, terminated, truncated, _ = (
+                self.env.step(action)
+            )
+
+            episode.append((state, action, reward))
+
+            if terminated:
+                return episode, True
+
+            if truncated:
+                return episode, False
+
+            state = next_state
+
+        return episode, False
+        
 
     def calc_return(self, episode: list[tuple[Any, Any, float]], discounted: bool = False) -> float:
         """Return of an episode given as [(s, a, r), ...]."""
-        raise NotImplementedError
+        total = 0.0
+        
+        for t, (_, _, reward) in enumerate(episode):
+            if discounted:
+                total += (self.gamma ** t) * reward
+            else:
+                total += reward
+
+        return total
 
 
 class RandomAgent(SarsaLambdaAgent):
