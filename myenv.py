@@ -58,10 +58,6 @@ class MyEnv(gym.Env):
         # 2 = Harvest
         self.action_space = spaces.Discrete(3)
 
-        # These hold the current state of the greenhouse.
-        self.growth_stage = 0
-        self.moisture = 2
-
         if render_mode is not None and render_mode not in self.metadata["render_modes"]:
             raise ValueError(f"unsupported render_mode: {render_mode}")
         self.render_mode = render_mode
@@ -107,9 +103,9 @@ class MyEnv(gym.Env):
             if self.growth_stage == 5:
                 reward = 100.0
             elif self.growth_stage == 4:
-                reward = 10.0
+                reward = 5.0
             else:
-                reward = -1.0
+                reward = -10.0
 
             return self._get_obs(), reward, terminated, False, self._get_info()
 
@@ -135,14 +131,15 @@ class MyEnv(gym.Env):
         self.moisture = new_moisture
 
         # Reward depends on the resulting moisture.
+        # Reward depends on resulting moisture
         if self.moisture == 0 or self.moisture == 4:
-            reward = -1.0
+            reward = -5.0          # clearly bad: plant is stressed
         else:
-            reward = -0.1
+            reward = -1.0          # normal living cost / okay action
 
         # Growth is only possible when moisture is healthy.
         if 1 <= self.moisture <= 3 and self.growth_stage < 5:
-            if self.np_random.random() < 0.80:
+            if self.np_random.random() < 0.50:
                 self.growth_stage += 1
 
         return self._get_obs(), reward, terminated, False, self._get_info()

@@ -1,238 +1,285 @@
 import gymnasium as gym
 import matplotlib.pyplot as plt
-import myenv
+import numpy as np
 
+import myenv
 from myagent import SarsaLambdaAgent
 
 
-# -------------------------------------------------
-# Wrapper that records state, action, and reward
-# for every step in every training episode
-# -------------------------------------------------
-class RewardRecorder(gym.Wrapper):
+ENV_ID = "cs272/GreenHouse-v0"
 
-    def __init__(self, env):
-        super().__init__(env)
+LAMBDAS = [0.0, 0.3, 0.6, 0.9, 1.0]
+SEEDS = [0, 1, 2, 3, 4]
 
-        # Each item will be one whole episode.
-        # Each episode contains:
-        # [(state, action, reward), ...]
-        self.episodes = []
+EPISODES = 1000
+WINDOW = 100
+TARGET_RETURN = 40.0
 
-        self.current_state = None
-
-    def reset(self, **kwargs):
-        observation, info = self.env.reset(**kwargs)
-
-        # Start a new episode recording
-        self.episodes.append([])
-
-        # Save the starting state
-        self.current_state = observation
-
-        return observation, info
-
-    def step(self, action):
-
-        # State BEFORE the action is taken
-        state = self.current_state
-
-        observation, reward, terminated, truncated, info = self.env.step(action)
-
-        # Save:
-        # current state
-        # chosen action
-        # reward received
-        self.episodes[-1].append(
-            (state, action, reward)
-        )
-
-        # Update current state for the next step
-        self.current_state = observation
-
-        return observation, reward, terminated, truncated, info
+GAMMA = 0.99
+ALPHA = 0.05
+EPSILON = 0.10
+INIT_VAL = 1.0
 
 
-# -------------------------------------------------
-# Create environment
-# -------------------------------------------------
-base_env = gym.make("cs272/GreenHouse-v0")
+def moving_average(values, window=WINDOW):
+    values = np.asarray(values, dtype=float)
 
-env = RewardRecorder(base_env)
-
-
-# -------------------------------------------------
-# Create SARSA(lambda) agent
-# -------------------------------------------------
-agent = SarsaLambdaAgent(
-    env=env,
-    total_epi=200,
-    lam=0.9,
-    seed=42,
-)
-
-
-# -------------------------------------------------
-# Train
-# -------------------------------------------------
-print("Training agent...")
-
-returns = agent.learn()
-
-print("Training finished!")
-
-
-# -------------------------------------------------
-# Episodes we want to examine
-# -------------------------------------------------
-checkpoints = [1, 50, 100, 175, 200]
-
-
-# Action number -> readable action name
-action_names = {
-    0: "Water",
-    1: "Wait",
-    2: "Harvest"
-}
-
-
-# -------------------------------------------------
-# Plot selected training episodes
-# -------------------------------------------------
-for episode_number in checkpoints:
-
-    # Python lists begin at index 0,
-    # so episode 1 is stored at index 0
-    episode = env.episodes[episode_number - 1]
-
-    states = [
-        state
-        for state, _, _ in episode
-    ]
-
-    actions = [
-        action
-        for _, action, _ in episode
-    ]
-
-    rewards = [
-        reward
-        for _, _, reward in episode
-    ]
-
-    steps = range(1, len(episode) + 1)
-
-
-    # -------------------------------------------------
-    # Create reward plot
-    # -------------------------------------------------
-    plt.figure(figsize=(11, 6))
-
-    plt.plot(
-        steps,
-        rewards,
-        marker="o"
+    return np.convolve(
+        values,
+        np.ones(window) / window,
+        mode="valid",
     )
 
 
-    # -------------------------------------------------
-    # Add state + action label to every point
-    # -------------------------------------------------
-    for step, state, action, reward in zip(
-        steps,
-        states,
-        actions,
-        rewards
-    ):
+def train_one(lam, seed):
+    env = gym.make(ENV_ID)
 
-        # Decode greenhouse state
-        growth = state // 5
-        moisture = state % 5
+    agent = SarsaLambdaAgent(
+        env=env,
+        gamma=GAMMA,
+        alpha=ALPHA,
+        eps=EPSILON,
+        lam=lam,
+        trace="accumulating",
+        total_epi=EPISODES,
+        init_val=INIT_VAL,
+        seed=seed,
+    )
 
-        label = (
-            f"State {state}\n"
-            f"G={growth}, M={moisture}\n"
-            f"{action_names[action]}"
+    returns = np.asarray(
+        agent.learn(),
+        dtype=float,
+    )
+
+    env.close()
+
+    return returns
+
+
+def run_lambda_sweep():
+    all_returns = {}
+
+    print("\n===================================")
+    print("SARSA(lambda) SWEEP")
+    print("===================================")
+
+    for lam in LAMBDAS:
+        all_returns[lam] = []
+
+        print(f"\nLambda = {lam}")
+
+        for seed in SEEDS:
+            print(f"  Training seed {seed}...")
+
+            returns = train_one(
+                lam,
+                seed,
+            )
+
+            all_returns[lam].append(
+                returns
+            )
+
+    return all_returns
+
+
+def plot_learning_curves(all_returns):
+    plt.figure(figsize=(10, 6))
+
+    episodes = np.arange(
+        WINDOW,
+        EPISODES + 1,
+    )
+
+    for lam in LAMBDAS:
+        matrix = np.asarray(
+            all_returns[lam]
         )
 
-        plt.annotate(
-            label,
-            (step, reward),
-            textcoords="offset points",
-            xytext=(0, 12),
-            ha="center",
-            fontsize=8
+        smoothed = np.asarray([
+            moving_average(row)
+            for row in matrix
+        ])
+
+        mean = smoothed.mean(axis=0)
+        std = smoothed.std(axis=0)
+
+        plt.plot(
+            episodes,
+            mean,
+            label=f"lambda={lam}",
         )
 
+        plt.fill_between(
+            episodes,
+            mean - std,
+            mean + std,
+            alpha=0.15,
+        )
 
-    # -------------------------------------------------
-    # Graph labels
-    # -------------------------------------------------
-    plt.xlabel("Step")
+    plt.axhline(
+        TARGET_RETURN,
+        linestyle="--",
+        label=f"target={TARGET_RETURN}",
+    )
 
-    plt.ylabel("Reward")
+    plt.xlabel("Episode")
+
+    plt.ylabel(
+        f"Return ({WINDOW}-episode moving average)"
+    )
 
     plt.title(
-        f"Training Episode {episode_number}: "
-        f"State, Action, and Reward"
+        "SARSA(lambda) Learning Curves"
     )
 
+    plt.legend()
     plt.tight_layout()
 
-    plt.show()
-
-
-    # -------------------------------------------------
-    # Print detailed episode information
-    # -------------------------------------------------
-    print("\n-----------------------------------")
-    print(f"Episode {episode_number}")
-    print("-----------------------------------")
-
-    for step, (state, action, reward) in enumerate(
-        episode,
-        start=1
-    ):
-
-        growth = state // 5
-        moisture = state % 5
-
-        print(
-            f"Step {step}: "
-            f"State {state} "
-            f"(growth={growth}, moisture={moisture}) | "
-            f"Action={action_names[action]} | "
-            f"Reward={reward}"
-        )
-
-
-    total_return = sum(
-        reward
-        for _, _, reward in episode
+    plt.savefig(
+        "sarsa_lambda_learning_curves.png",
+        dpi=200,
     )
 
-    print("Total return:", total_return)
+    plt.close()
 
 
-# -------------------------------------------------
-# Basic training information
-# -------------------------------------------------
-print("\n===================================")
-print("Training Summary")
-print("===================================")
+def print_summary_table(all_returns):
+    print("\n===================================")
+    print("LAMBDA SUMMARY")
+    print("===================================")
 
-print("Number of episodes:", len(returns))
+    print(f"Target return = {TARGET_RETURN}")
+    print(f"Moving-average window = {WINDOW}")
 
-print("Q-table shape:", agent.q.shape)
+    print()
 
-print("First 10 returns:")
-print(returns[:10])
+    print(
+        f"{'lambda':<8}"
+        f"{'episodes to target':<22}"
+        f"{'mean final return':<20}"
+    )
 
-print("Last 10 returns:")
-print(returns[-10:])
+    print("-" * 50)
+
+    for lam in LAMBDAS:
+        matrix = np.asarray(all_returns[lam])
+
+        # Smooth each seed separately
+        smoothed = np.asarray([
+            moving_average(row)
+            for row in matrix
+        ])
+
+        # Mean learning curve across all seeds
+        mean_curve = smoothed.mean(axis=0)
+
+        # Find first point where the mean curve reaches target
+        hits = np.where(mean_curve >= TARGET_RETURN)[0]
+
+        if len(hits) == 0:
+            target_text = "not reached"
+        else:
+            episode_to_target = int(hits[0] + WINDOW)
+            target_text = str(episode_to_target)
+
+        # Mean return over the final 100 episodes,
+        # across all five seeds
+        mean_final = np.mean(
+            matrix[:, -WINDOW:]
+        )
+
+        print(
+            f"{lam:<8}"
+            f"{target_text:<22}"
+            f"{mean_final:<20.3f}"
+        )
+
+def print_greedy_episode():
+    print("\n===================================")
+    print("TRAINED GREEDY SAMPLE EPISODE")
+    print("===================================")
+
+    env = gym.make(
+        ENV_ID,
+        render_mode="ansi",
+    )
+
+    agent = SarsaLambdaAgent(
+        env=env,
+        gamma=GAMMA,
+        alpha=ALPHA,
+        eps=EPSILON,
+        lam=0.3,
+        trace="accumulating",
+        total_epi=EPISODES,
+        init_val=INIT_VAL,
+        seed=0,
+    )
+
+    agent.learn()
+
+    state, info = env.reset(seed=0)
+
+    total_return = 0.0
+
+    print(env.render())
+
+    for step in range(1, 301):
+        action = agent.eps_greedy(
+            state,
+            exploration=False,
+        )
+
+        next_state, reward, terminated, truncated, info = (
+            env.step(action)
+        )
+
+        total_return += reward
+
+        action_name = {
+            0: "Water",
+            1: "Wait",
+            2: "Harvest",
+        }[action]
+
+        print(
+            f"\nStep {step}: "
+            f"{action_name}, reward={reward}"
+        )
+
+        print(env.render())
+
+        if terminated or truncated:
+            break
+
+        state = next_state
+
+    print(
+        f"\nTotal greedy return: {total_return}"
+    )
+
+    env.close()
 
 
-# -------------------------------------------------
-# Close environment
-# -------------------------------------------------
-env.close()
+def main():
+    all_returns = run_lambda_sweep()
+
+    plot_learning_curves(
+        all_returns
+    )
+
+    print_summary_table(
+        all_returns
+    )
+
+    print_greedy_episode()
+
+    print(
+        "\nSaved plot: "
+        "sarsa_lambda_learning_curves.png"
+    )
+
+
+if __name__ == "__main__":
+    main()

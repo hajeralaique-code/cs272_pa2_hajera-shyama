@@ -186,7 +186,7 @@ class SarsaLambdaAgent:
             ]
         """
         episode = []
-        state, _ = self.env.reset()
+        state, _ = self.env.reset(seed=self.seed)
 
         for _ in range(max_steps):
             action = self.eps_greedy(state, exploration=False)
