@@ -130,7 +130,6 @@ class MyEnv(gym.Env):
         new_moisture = max(0, min(4, new_moisture))
         self.moisture = new_moisture
 
-        # Reward depends on the resulting moisture.
         # Reward depends on resulting moisture
         if self.moisture == 0 or self.moisture == 4:
             reward = -5.0          # clearly bad: plant is stressed

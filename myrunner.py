@@ -11,7 +11,7 @@ ENV_ID = "cs272/GreenHouse-v0"
 LAMBDAS = [0.0, 0.3, 0.6, 0.9, 1.0]
 SEEDS = [0, 1, 2, 3, 4]
 
-EPISODES = 1000
+EPISODES = 3500
 WINDOW = 100
 TARGET_RETURN = 40.0
 
