@@ -29,10 +29,13 @@ def argmax_action(values: np.ndarray, rng: np.random.Generator) -> int:
     Returns:
         int: an action
     """
+    # find the largest q value
     max_value = np.max(values)
 
+    # find all actions with the largest q value
     best_actions = np.flatnonzero(values == max_value)
 
+    # randomly choose an action from the best actions
     return int(rng.choice(best_actions))
 
 
@@ -85,6 +88,7 @@ class SarsaLambdaAgent:
 
     def init_qtable(self, init_val: float = 0.0) -> np.ndarray:
         """Build the q table, shape (n_states, n_actions), filled with init_val."""
+        # create the q table using number of states and actions
         return np.full(
             (self.n_states, self.n_actions),
             init_val,
@@ -102,9 +106,11 @@ class SarsaLambdaAgent:
         Returns:
             int: an action
         """
+        # choose a random action with probability eps when exploring
         if exploration and self.rng.random() < self.eps:
             return int(self.rng.integers(self.n_actions))
 
+        # otherwise, choose the action with the highest Q-value
         return argmax_action(self.q[state], self.rng)
 
     def learn(self) -> list[float]:
@@ -114,61 +120,70 @@ class SarsaLambdaAgent:
             list[float]: the undiscounted return of each training episode, in
             order. myrunner.py plots these.
         """
+        # store the total return from each episode
         returns = []
 
+        # train for the specified number of episodes
         for episode in range(self.total_epi):
-            # Seed each episode reproducibly if a seed was provided.
+
+            # create a reproducible seed for each episode
             episode_seed = None if self.seed is None else self.seed + episode
             state, _ = self.env.reset(seed=episode_seed)
 
-            # Eligibility traces start at zero every episode.
+            # reset eligibility traces to 0 at the start of each episode.
             eligibility = np.zeros_like(self.q)
 
-            # Choose the first action using epsilon-greedy.
+            # choose the first action using epsilon-greedy
             action = self.eps_greedy(state)
 
+            # keep track of the total return for the episode
             total_return = 0.0
 
             while True:
+                # take selected action and observe the next state and reward
                 next_state, reward, terminated, truncated, _ = self.env.step(action)
 
+                # add the reward to the total return
                 total_return += reward
 
-                # Terminal state: there is no future Q-value.
+                # if in terminal state then there is no future Q-value
                 if terminated:
+                    # calculate the TD error
                     delta = reward - self.q[state, action]
                     next_action = None
 
                 else:
-                    # This includes truncated states because S' still exists.
+                    # choose the next action using epsilon-greedy
                     next_action = self.eps_greedy(next_state)
 
+                    # calculate sarsa TD error
                     delta = (
                         reward
                         + self.gamma * self.q[next_state, next_action]
                         - self.q[state, action]
                     )
 
-                # Update eligibility trace for current state-action pair.
+                # update current eligibility trace for current state-action pair based on the trace type
                 if self.trace == ACCUMULATING:
                     eligibility[state, action] += 1.0
-                else:  # REPLACING
+                else:  
                     eligibility[state, action] = 1.0
 
-                # Update all Q-values using the eligibility traces.
+                # update all Q-values using the eligibility traces
                 self.q += self.alpha * delta * eligibility
 
-                # Decay the traces.
+                # decay all eligibility traces
                 eligibility *= self.gamma * self.lam
 
-                # Stop when the episode ends.
+                # stop when the episode terminates or is truncated
                 if terminated or truncated:
                     break
 
-                # Move to the next state-action pair.
+                # move to the next state-action pair
                 state = next_state
                 action = next_action
 
+            # save the total return for the episode
             returns.append(total_return)
 
         return returns
@@ -185,24 +200,32 @@ class SarsaLambdaAgent:
                 bool: True if it reached a terminal state, False if it ran out
             ]
         """
+        # store each state, action, and reward from the episode
         episode = []
+        # reset the environment to get starting state
         state, _ = self.env.reset(seed=self.seed)
 
+        # run the learned policy up to the maximum number of steps
         for _ in range(max_steps):
+            # choose the best action without exploration
             action = self.eps_greedy(state, exploration=False)
 
+            # take the greedy action
             next_state, reward, terminated, truncated, _ = (
                 self.env.step(action)
             )
 
+            # store the current state, action, and reward
             episode.append((state, action, reward))
 
+            # check if the episode reached a terminal state
             if terminated:
                 return episode, True
 
             if truncated:
                 return episode, False
 
+            # move to the next state
             state = next_state
 
         return episode, False
@@ -210,9 +233,12 @@ class SarsaLambdaAgent:
 
     def calc_return(self, episode: list[tuple[Any, Any, float]], discounted: bool = False) -> float:
         """Return of an episode given as [(s, a, r), ...]."""
+        # start the total episode return at 0
         total = 0.0
-        
+
+        # go through each reward in the episode
         for t, (_, _, reward) in enumerate(episode):
+            # apply discounting if specified
             if discounted:
                 total += (self.gamma ** t) * reward
             else:
