@@ -1,37 +1,21 @@
-"""Exact dynamic programming solution for the greenhouse MDP.
-
-Unlike SarsaLambdaAgent, which only ever sees samples from env.step(), this
-script is handed the environment's full transition model directly (the
-water/wait probabilities, the growth probability, the reward rules) and uses
-it to compute the optimal value function exactly, by value iteration. There
-is nothing to "learn" here -- it is the ceiling SARSA(lambda) is trying to
-reach through trial and error.
-
-This mirrors myenv.py's step() logic. If you change the environment's
-rewards or probabilities, update the matching lines here too.
-"""
-
 import numpy as np
 
-N_STATES = 30    # growth_stage (0-5) * 5 + moisture (0-4)
-N_ACTIONS = 3    # 0 water, 1 wait, 2 harvest
-START_STATE = 2  # growth_stage=0, moisture=2
 
-# Undiscounted, to match the raw episode returns SARSA's learning curve plots.
-# Well-posed here because harvest is always available and gives a finite
-# reward, so the optimal policy is guaranteed to terminate.
+N_STATES = 30
+N_ACTIONS = 3
+START_STATE = 2
 GAMMA = 1.0
 
 
-def decode(state: int) -> tuple[int, int]:
+def decode(state):
     return divmod(state, 5)
 
 
-def encode(growth: int, moisture: int) -> int:
+def encode(growth, moisture):
     return growth * 5 + moisture
 
 
-def harvest_reward(growth: int) -> float:
+def harvest_reward(growth):
     if growth == 5:
         return 100.0
     if growth == 4:
@@ -39,75 +23,119 @@ def harvest_reward(growth: int) -> float:
     return -10.0
 
 
-def water_wait_outcomes(growth: int, moisture: int, action: int):
-    """All (probability, next_state, reward) outcomes for action 0 or 1."""
-    if action == 0:  # water
-        moisture_branches = [(0.8, 1), (0.2, 2)]
-    else:  # wait
-        moisture_branches = [(0.8, -1), (0.2, 0)]
+def water_wait_outcomes(growth, moisture, action):
+    if action == 0:
+        moisture_outcomes = [(0.80, 1), (0.20, 2)]
+    elif action == 1:
+        moisture_outcomes = [(0.80, -1), (0.20, 0)]
+    else:
+        raise ValueError("action must be 0 or 1")
 
     outcomes = []
-    for p_m, delta in moisture_branches:
-        new_moisture = max(0, min(4, moisture + delta))
+
+    for moisture_probability, change in moisture_outcomes:
+        new_moisture = np.clip(moisture + change, 0, 4)
         reward = -5.0 if new_moisture in (0, 4) else -1.0
 
         if 1 <= new_moisture <= 3 and growth < 5:
-            for p_g, grows in [(0.5, True), (0.5, False)]:
-                new_growth = growth + 1 if grows else growth
-                outcomes.append((p_m * p_g, encode(new_growth, new_moisture), reward))
+            outcomes.append((
+                moisture_probability * 0.50,
+                encode(growth + 1, new_moisture),
+                reward,
+            ))
+            outcomes.append((
+                moisture_probability * 0.50,
+                encode(growth, new_moisture),
+                reward,
+            ))
         else:
-            outcomes.append((p_m, encode(growth, new_moisture), reward))
+            outcomes.append((
+                moisture_probability,
+                encode(growth, new_moisture),
+                reward,
+            ))
 
     return outcomes
 
 
-def value_iteration(theta: float = 1e-8, max_iters: int = 10_000):
-    """Return (V, Q, policy, n_iters, start_value_history).
+def action_value(value_function, state, action):
+    growth, moisture = decode(state)
 
-    start_value_history is V[START_STATE] after every sweep -- this is DP's
-    own "learning curve": how its estimate of the start state's value
-    settles over iterations, for plotting next to SARSA's episode curve.
-    """
-    V = np.zeros(N_STATES)
+    if action == 2:
+        return harvest_reward(growth)
+
+    outcomes = water_wait_outcomes(growth, moisture, action)
+
+    return sum(
+        probability * (
+            reward + GAMMA * value_function[next_state]
+        )
+        for probability, next_state, reward in outcomes
+    )
+
+
+def value_iteration(theta=1e-8, max_iterations=10000):
+    values = np.zeros(N_STATES)
     start_value_history = []
 
-    for iteration in range(1, max_iters + 1):
-        new_V = np.copy(V)
-        delta = 0.0
+    for iteration in range(1, max_iterations + 1):
+        new_values = np.zeros(N_STATES)
 
         for state in range(N_STATES):
-            growth, moisture = decode(state)
-            q_water = sum(p * (r + GAMMA * V[s2]) for p, s2, r in water_wait_outcomes(growth, moisture, 0))
-            q_wait = sum(p * (r + GAMMA * V[s2]) for p, s2, r in water_wait_outcomes(growth, moisture, 1))
-            q_harvest = harvest_reward(growth)
+            action_values = [
+                action_value(values, state, action)
+                for action in range(N_ACTIONS)
+            ]
 
-            new_V[state] = max(q_water, q_wait, q_harvest)
-            delta = max(delta, abs(new_V[state] - V[state]))
+            new_values[state] = max(action_values)
 
-        V = new_V
-        start_value_history.append(V[START_STATE])
-        if delta < theta:
+        difference = np.max(np.abs(new_values - values))
+        values = new_values
+        start_value_history.append(values[START_STATE])
+
+        if difference < theta:
             break
 
-    Q = np.zeros((N_STATES, N_ACTIONS))
-    for state in range(N_STATES):
-        growth, moisture = decode(state)
-        Q[state, 0] = sum(p * (r + GAMMA * V[s2]) for p, s2, r in water_wait_outcomes(growth, moisture, 0))
-        Q[state, 1] = sum(p * (r + GAMMA * V[s2]) for p, s2, r in water_wait_outcomes(growth, moisture, 1))
-        Q[state, 2] = harvest_reward(growth)
+    q_values = np.zeros((N_STATES, N_ACTIONS))
 
-    policy = np.argmax(Q, axis=1)
-    return V, Q, policy, iteration, start_value_history
+    for state in range(N_STATES):
+        for action in range(N_ACTIONS):
+            q_values[state, action] = action_value(
+                values,
+                state,
+                action,
+            )
+
+    policy = np.argmax(q_values, axis=1)
+
+    return (
+        values,
+        q_values,
+        policy,
+        iteration,
+        start_value_history,
+    )
 
 
 if __name__ == "__main__":
-    V, Q, policy, n_iters, start_value_history = value_iteration()
-    action_names = {0: "water", 1: "wait", 2: "harvest"}
+    values, q_values, policy, iterations, history = value_iteration()
 
-    print(f"Value iteration converged in {n_iters} sweeps.\n")
-    print("Optimal policy, (growth, moisture) -> action  [V]:")
+    action_names = {
+        0: "Water",
+        1: "Wait",
+        2: "Harvest",
+    }
+
+    print(f"Value iteration converged in {iterations} iterations")
+    print(f"Optimal value from start state: {values[START_STATE]:.3f}\n")
+
     for state in range(N_STATES):
         growth, moisture = decode(state)
-        print(f"  ({growth}, {moisture}) -> {action_names[policy[state]]:8s} V={V[state]:7.2f}")
 
-    print(f"\nOptimal expected return from the start state: {V[START_STATE]:.3f}")
+        print(
+            f"State {state:2d}: "
+            f"growth={growth}, "
+            f"moisture={moisture}, "
+            f"action={action_names[policy[state]]}, "
+            f"value={values[state]:.3f}"
+        )
