@@ -1,39 +1,37 @@
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
-
 import myenv
 from myagent import SarsaLambdaAgent
 from mydp import value_iteration, START_STATE
 
-
+#environment ID registered in Gymnasium
 ENV_ID = "cs272/GreenHouse-v0"
-
+#the agent ran SARSA λ algorithm using each λ and seed pair
 LAMBDAS = [0.0, 0.3, 0.6, 0.9, 1.0]
 SEEDS = [0, 1, 2, 3, 4]
-
+#total number of episodes selected after testing 1000, 2000, 3000 episodes.
+#at episode 3500 each SARSA(λ) learning convergs for a few episodes
 EPISODES = 3500
-EVALUATION_EPISODES = 500
-WINDOW = 100
-TARGET_RETURN = 40.0
+EVALUATION_EPISODES = 500 #number of independent episodes used to evaluate each learned policy
+WINDOW = 100 #moving average calculation window
+TARGET_RETURN = 40.0 #target return was selected just as a reporting threshold
 
-GAMMA = 1.0
-ALPHA = 0.05
-EPSILON = 0.10
-INIT_VAL = 1.0
+#SARSA(λ) hyparameters
+GAMMA = 1.0 #discount factor: undiscounted for DP
+ALPHA = 0.05 #learning rate
+EPSILON = 0.10 #epsilon value for epsilon greedy
+INIT_VAL = 1.0 #initial value assinged to a Q-table
 
-
+#the function calculated moving average return smoothed over 100 episodes
 def moving_average(values):
-    return np.convolve(
-        values,
-        np.ones(WINDOW) / WINDOW,
-        mode="valid",
-    )
+    return np.convolve(values,np.ones(WINDOW) / WINDOW,mode="valid")
 
-
+#the function trains new agent for 3500 episodes using a fixed λ and seed pair
+#λ and seed pair is changed every new run
 def train_one(lam, seed):
     env = gym.make(ENV_ID)
-
+    #accumulating trace is used to increase trace for a state action pair.
     agent = SarsaLambdaAgent(
         env=env,
         gamma=GAMMA,
@@ -51,70 +49,41 @@ def train_one(lam, seed):
 
     return returns, agent
 
-
+#this function runs new agent for each λ,seed pair and returns a dictionary with each episode return.
 def run_lambda_sweep():
     all_returns = {}
-    trained_agents = {}
+    trained_agents = {} #storing the trained agent from each λ, seed  pair run
 
     for lam in LAMBDAS:
         all_returns[lam] = []
         trained_agents[lam] = []
-
         for seed in SEEDS:
-            print(f"Training lambda={lam}, seed={seed}")
-
+            print(f"Training λ={lam}, seed={seed}")
             returns, agent = train_one(lam, seed)
-
             all_returns[lam].append(returns)
             trained_agents[lam].append(agent)
-
     return all_returns, trained_agents
 
-
+#this function plots the λ sweep learning curves with the x-axis as the number of episodes and y-axis as the return values.
+#each learning curve plots the 100-episode moving average returns and the shaded area for each solid line 
+#represents the +/- 1 standard deviation from the mean
 def plot_learning_curves(all_returns, dp_value):
     episodes = np.arange(WINDOW, EPISODES + 1)
 
     plt.figure(figsize=(10, 6))
-
     for lam in LAMBDAS:
         matrix = np.asarray(all_returns[lam])
-
-        smoothed = np.asarray([
-            moving_average(row)
-            for row in matrix
-        ])
-
+        smoothed = np.asarray([moving_average(row) for row in matrix])
         mean = smoothed.mean(axis=0)
         std = smoothed.std(axis=0)
 
-        plt.plot(
-            episodes,
-            mean,
-            linewidth=2,
-            label=f"λ={lam}",
-        )
+        plt.plot(episodes,mean,linewidth=2,label=f"λ={lam}") #plotting the learning curve for each λ
+        plt.fill_between(episodes,mean - std,mean + std,alpha=0.15) #plotting the standard deviation
 
-        plt.fill_between(
-            episodes,
-            mean - std,
-            mean + std,
-            alpha=0.15,
-        )
-
-    plt.axhline(
-        dp_value,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label=f"DP optimal value={dp_value:.2f}",
-    )
-
-    plt.axhline(
-        TARGET_RETURN,
-        color="gray",
-        linestyle=":",
-        label=f"target={TARGET_RETURN}",
-    )
+    #plotting a dashed line showing the optimal value reached by DP agent
+    plt.axhline(dp_value,color="black",linestyle="--",linewidth=2,label=f"DP optimal value={dp_value:.2f}")
+    #plotting a dotted line showing the target return threshold
+    plt.axhline(TARGET_RETURN,linestyle=":",color="red",label=f"target={TARGET_RETURN}",) 
 
     plt.xlabel("Training episode")
     plt.ylabel("Return")
@@ -124,20 +93,16 @@ def plot_learning_curves(all_returns, dp_value):
     plt.savefig("sarsa_lambda_learning_curves_with_dp.png", dpi=200)
     plt.close()
 
-
+#the function calculates two values for each lamda, seed pair showing the number of episode it took the agent to first reach the 
+#target threshold and the last window mean average return and prints the summary table calculated in the summary_stats function
 def print_summary_table(all_returns):
     print("\nSARSA(λ) SUMMARY")
     print(f"Target return: {TARGET_RETURN}")
-    print(f"{'lambda':<10}{'episodes to target':<22}{'mean final return':<20}")
+    print(f"{'λ':<10}{'episodes to target':<22}{'mean final return':<20}")
 
     for lam in LAMBDAS:
         matrix = np.asarray(all_returns[lam])
-
-        smoothed = np.asarray([
-            moving_average(row)
-            for row in matrix
-        ])
-
+        smoothed = np.asarray([moving_average(row)for row in matrix])
         mean_curve = smoothed.mean(axis=0)
         hits = np.where(mean_curve >= TARGET_RETURN)[0]
 
@@ -154,7 +119,7 @@ def print_summary_table(all_returns):
             f"{mean_final:<20.3f}"
         )
 
-
+#evaluate a trained SARSA agent without further exploration and stores the return from each episode
 def evaluate_sarsa(agent, seed_offset):
     env = gym.make(ENV_ID)
     returns = []
@@ -162,13 +127,9 @@ def evaluate_sarsa(agent, seed_offset):
     for episode in range(EVALUATION_EPISODES):
         state, _ = env.reset(seed=seed_offset + episode)
         total_return = 0.0
-
+        #agent selects the greedy action from the learned Q-table
         while True:
-            action = agent.eps_greedy(
-                state,
-                exploration=False,
-            )
-
+            action = agent.eps_greedy(state,exploration=False,)
             next_state, reward, terminated, truncated, _ = env.step(action)
             total_return += reward
 
@@ -176,13 +137,11 @@ def evaluate_sarsa(agent, seed_offset):
                 break
 
             state = next_state
-
         returns.append(total_return)
-
     env.close()
     return np.asarray(returns)
 
-
+#evaluates the fixed policy computed by dynamic programming agent and returns all DP evaluation returns
 def evaluate_dp(policy):
     env = gym.make(ENV_ID)
     returns = []
@@ -190,10 +149,9 @@ def evaluate_dp(policy):
     for episode in range(EVALUATION_EPISODES):
         state, _ = env.reset(seed=50000 + episode)
         total_return = 0.0
-
+        #agent applies the action selected by the DP policy
         while True:
             action = int(policy[state])
-
             next_state, reward, terminated, truncated, _ = env.step(action)
             total_return += reward
 
@@ -207,7 +165,7 @@ def evaluate_dp(policy):
     env.close()
     return np.asarray(returns)
 
-
+#the function stores labels and evaluation returns for the comparison plot
 def plot_greedy_comparison(trained_agents, dp_value, dp_policy):
     labels = []
     means = []
@@ -217,14 +175,10 @@ def plot_greedy_comparison(trained_agents, dp_value, dp_policy):
         evaluation_returns = []
 
         for index, agent in enumerate(trained_agents[lam]):
-            values = evaluate_sarsa(
-                agent,
-                seed_offset=10000 + index * 1000,
-            )
+            values = evaluate_sarsa(agent,seed_offset=10000 + index * 1000)
             evaluation_returns.extend(values)
 
         evaluation_returns = np.asarray(evaluation_returns)
-
         labels.append(f"SARSA λ={lam}")
         means.append(np.mean(evaluation_returns))
         stds.append(np.std(evaluation_returns))
@@ -239,23 +193,8 @@ def plot_greedy_comparison(trained_agents, dp_value, dp_policy):
 
     plt.figure(figsize=(10, 6))
 
-    plt.errorbar(
-        x[:-1],
-        means[:-1],
-        yerr=stds[:-1],
-        fmt="o",
-        capsize=5,
-        linewidth=2,
-        label="SARSA greedy evaluation",
-    )
-
-    plt.axhline(
-        dp_value,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label=f"DP optimal value={dp_value:.2f}",
-    )
+    plt.errorbar(x[:-1],means[:-1],yerr=stds[:-1],fmt="o",capsize=5,linewidth=2,label="SARSA greedy evaluation")
+    plt.axhline(dp_value,color="black",linestyle="--",linewidth=2,label=f"DP optimal value={dp_value:.2f}")
 
     plt.xticks(x, labels, rotation=25)
     plt.ylabel("Mean greedy evaluation return")
@@ -276,11 +215,7 @@ def plot_greedy_comparison(trained_agents, dp_value, dp_policy):
 
 
 def print_sample_episode(agent):
-    env = gym.make(
-        ENV_ID,
-        render_mode="ansi",
-    )
-
+    env = gym.make(ENV_ID,render_mode="ansi")
     state, _ = env.reset(seed=0)
     total_return = 0.0
 
@@ -288,11 +223,7 @@ def print_sample_episode(agent):
     print(env.render())
 
     for step in range(1, 301):
-        action = agent.eps_greedy(
-            state,
-            exploration=False,
-        )
-
+        action = agent.eps_greedy(state,exploration=False)
         next_state, reward, terminated, truncated, _ = env.step(action)
         total_return += reward
 
