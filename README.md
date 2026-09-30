@@ -70,9 +70,6 @@ These files are supplemental implementations and are separate from the main `mye
 
 ## Running the Project
 
-Activate the course environment:
-
 ```bash
-conda activate cs272
 pip install -r requirements.txt
 python myrunner.py
