@@ -56,16 +56,15 @@ Each lambda value is trained using 5 different random seeds. The results are use
 
 The learning curves use a 100-episode moving average and show the mean and spread across seeds.
 
-## Extra Implementation
+## Extra Implementations
 
-The `Extra Implementation/` directory contains additional experiments and analysis beyond the main implementation.
+The files below include additional experiments and analysis beyond the main implementation.
 
 - `myenv_sparse.py` - sparse-reward version of the greenhouse environment where reward is delayed until a successful ripe harvest.
 - `myrunner_sparse.py` - runs the SARSA(lambda) experiments on the sparse-reward greenhouse and generates additional learning and episode plots.
-- `random_runner.py` - evaluates the random-agent baseline across multiple seeds and saves numerical results and plots.
 - `mydp.py` - contains the additional dynamic programming agent implementation.
-- `myrunner_dp.py` - runs the dynamic programming implementation and its experiments.
-- `test_env.py` - contains additional environment testing and correctness checks.
+- `myrunner_dp.py` - runs the dynamic programming agent performance evaluation in comparison with SARSA(lambda) agent performance.
+- `test_env.py` - contains testing and correctness checks for our environment.
 
 These files are supplemental implementations and are separate from the main `myenv.py`, `myagent.py`, and `myrunner.py` submission.
 
