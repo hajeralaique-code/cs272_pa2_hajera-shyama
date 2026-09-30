@@ -5,7 +5,7 @@ harvest. The goal is to keep soil moisture in a healthy range long enough for
 the plant to reach full maturity, then harvest it for the largest reward.
 
 Extremely dry or wet soil stresses the plant and receives a penalty.
-Random variation in irrigation and plant growth makes the environment stochastic."""
+Random variation in moisture and plant growth makes the environment stochastic."""
 
 import numpy as np
 import gymnasium as gym
