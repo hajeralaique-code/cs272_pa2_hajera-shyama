@@ -2,9 +2,9 @@
 
 ## Story
 
-GreenHouse is a stochastic plant-growing environment. The agent manages a plant by choosing whether to water, wait, or harvest. The goal is to keep the soil moisture in a healthy range long enough for the plant to reach full maturity, then harvest it for the largest reward.
+GreenHouse is a stochastic plant-growing environment. The agent manages a plant by choosing whether to water, wait, or harvest. The goal is to keep the soil moisture in a healthy range long enough for the plant to become fully ripe, then harvest it for the largest reward.
 
-Very dry or waterlogged soil stresses the plant and gives a penalty. Irrigation and plant growth are stochastic, so the same action in the same state does not always produce the same result.
+Very dry or waterlogged soil is not good for plant growth, and the agent gets a penalty. Moisture and plant growth are stochastic, so the same action in the same state does not always produce the same result.
 
 ## Observation Space
 
