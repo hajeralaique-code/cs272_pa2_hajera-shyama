@@ -74,3 +74,5 @@ Activate the course environment:
 
 ```bash
 conda activate cs272
+pip install -r requirements.txt
+python myrunner.py
